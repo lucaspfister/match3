@@ -11,6 +11,7 @@ public static class Util
 
     public static Vector2 BoardToLocalPosition(int x, int y, float pieceSize)
     {
-        return new Vector2(x * pieceSize, -y * pieceSize);
+        float offset = pieceSize * 0.5f;
+        return new Vector2(x * pieceSize + offset, -y * pieceSize - offset);
     }
 }

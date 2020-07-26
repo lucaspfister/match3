@@ -4,14 +4,18 @@ using UnityEngine;
 
 public class AnimationHelper : MonoBehaviour
 {
+    [SerializeField] float shrinkDuration = 0.2f;
+
+    public float GetShrinkDuration => shrinkDuration;
+
     public void MoveTo(GameObject piece, Vector2 position, float duration)
     {
-        StartCoroutine(Move(piece, position, duration));
+        StartCoroutine(MoveToCoroutine(piece, position, duration));
     }
 
-    IEnumerator Move(GameObject piece, Vector2 position, float duration)
+    IEnumerator MoveToCoroutine(GameObject obj, Vector2 position, float duration)
     {
-        RectTransform rectTransform = piece.GetComponent<RectTransform>();
+        RectTransform rectTransform = obj.GetComponent<RectTransform>();
 
         if (duration == 0)
         {
@@ -30,5 +34,24 @@ public class AnimationHelper : MonoBehaviour
         }
 
         rectTransform.anchoredPosition = position;
+    }
+
+    public void Shrink(GameObject obj)
+    {
+        StartCoroutine(ShrinkCoroutine(obj));
+    }
+
+    IEnumerator ShrinkCoroutine(GameObject obj)
+    {
+        float t = 0;
+
+        while (t < 1)
+        {
+            obj.transform.localScale = Vector3.Lerp(Vector3.one, Vector3.zero, t);
+            t += Time.deltaTime / shrinkDuration;
+            yield return null;
+        }
+
+        obj.transform.localScale = Vector3.zero;
     }
 }

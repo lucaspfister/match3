@@ -9,6 +9,7 @@ public class PieceManager : MonoBehaviour
 
     [SerializeField] float pieceMovementDuration = 0.25f;
     [SerializeField] AnimationHelper animationHelper;
+    [SerializeField] CanvasScaler canvasScaler;
     [SerializeField] GridLayoutGroup grid;
     [SerializeField] CanvasGroup canvasGroup;
     [SerializeField] Piece piecePrefab;
@@ -23,7 +24,7 @@ public class PieceManager : MonoBehaviour
     enum Direction
     {
         None,
-        Top,
+        Up,
         Down,
         Left,
         Right
@@ -33,9 +34,9 @@ public class PieceManager : MonoBehaviour
     {
         Instance = this;
 
-        pieceSize = grid.cellSize.x;
-        boardLength = grid.constraintCount;
         board = new Piece[8, 8];
+        boardLength = grid.constraintCount;
+        pieceSize = grid.cellSize.x;
     }
 
     public void SetupBoard()
@@ -62,48 +63,66 @@ public class PieceManager : MonoBehaviour
         do
         {
             value = Random.Range(0, pieceColors.Length);
-        } while
-        ((CheckSideValue(x, y, value, Direction.Top) && CheckSideValue(x, y - 1, value, Direction.Top)) ||
-        (CheckSideValue(x, y, value, Direction.Left) && CheckSideValue(x - 1, y, value, Direction.Left)));
+        } while (CheckSideValue(x, y, value, Direction.Up) > 1 ||
+                 CheckSideValue(x, y, value, Direction.Left) > 1);
 
         return value;
     }
 
-    bool CheckSideValue(int x, int y, int value, Direction direction)
+    int CheckSideValue(int x, int y, int value, Direction direction, int total = 0)
     {
+        bool isMatch = false;
+
         switch (direction)
         {
-            case Direction.Top:
+            case Direction.Up:
                 {
                     if (y > 0 && board[x, y - 1]?.value == value)
-                        return true;
-
-                    return false;
+                    {
+                        isMatch = true;
+                        total++;
+                        y -= 1;
+                    }
+                    break;
                 }
             case Direction.Down:
                 {
                     if (y < boardLength - 1 && board[x, y + 1]?.value == value)
-                        return true;
-
-                    return false;
+                    {
+                        isMatch = true;
+                        total++;
+                        y += 1;
+                    }
+                    break;
                 }
             case Direction.Left:
                 {
                     if (x > 0 && board[x - 1, y]?.value == value)
-                        return true;
-
-                    return false;
+                    {
+                        isMatch = true;
+                        total++;
+                        x -= 1;
+                    }
+                    break;
                 }
             case Direction.Right:
                 {
                     if (x < boardLength - 1 && board[x + 1, y]?.value == value)
-                        return true;
-
-                    return false;
+                    {
+                        isMatch = true;
+                        total++;
+                        x += 1;
+                    }
+                    break;
                 }
         }
 
-        return false;
+        if (isMatch)
+        {
+            return CheckSideValue(x, y, value, direction, total);
+        }
+
+        return total;
     }
 
     bool ValidateMovement(Piece piece1, Piece piece2)
@@ -157,7 +176,7 @@ public class PieceManager : MonoBehaviour
             selectedPiece.DragSuccess();
         }
 
-        StartCoroutine(MoveSelectedPieces(selectedPiece, piece, isDrag));
+        StartCoroutine(CheckSelectedPieces(selectedPiece, piece, isDrag));
     }
 
     public void DeselectPiece()
@@ -165,29 +184,107 @@ public class PieceManager : MonoBehaviour
         selectedPiece = null;
     }
 
-    IEnumerator MoveSelectedPieces(Piece piece1, Piece piece2, bool isDrag)
+    IEnumerator CheckSelectedPieces(Piece piece1, Piece piece2, bool isDrag)
     {
         LockBoard();
+        DeselectPiece();
         piece1.Deselect();
         piece2.Deselect();
-        DeselectPiece();
 
-        Vector2Int piece1Coord = piece1.boardCoordinate;
-        piece1.boardCoordinate = piece2.boardCoordinate;
-        piece2.boardCoordinate = piece1Coord;
+        yield return StartCoroutine(SwitchPieces(piece1, piece2, isDrag));
 
-        float duration = isDrag ? 0 : pieceMovementDuration;
-        animationHelper.MoveTo(piece1.gameObject, Util.BoardToLocalPosition(piece1.boardCoordinate, pieceSize), duration);
-        animationHelper.MoveTo(piece2.gameObject, Util.BoardToLocalPosition(piece2.boardCoordinate, pieceSize), duration);
+        if (piece1.value == piece2.value)
+        {
+            yield return StartCoroutine(SwitchPieces(piece1, piece2, isDrag));
+        }
+        else
+        {
+            List<Vector2Int> lstMatches1 = ListMatches(piece1);
+            List<Vector2Int> lstMatches2 = ListMatches(piece2);
 
-        yield return new WaitForSeconds(duration);
-        
-        //verificar se pontuou
+            if (lstMatches1.Count == 0 && lstMatches2.Count == 0)
+            {
+                yield return StartCoroutine(SwitchPieces(piece1, piece2, isDrag));
+            }
+            else
+            {
+                //TODO
+                foreach (var item in lstMatches1)
+                {
+                    animationHelper.Shrink(board[item.x, item.y].gameObject);
+                }
+            }
+        }
 
         //GameController.Instance.MoveUsed();
         //canvasGroup.interactable = GameController.Instance.hasMovesLeft;
 
         UnlockBoard();
+    }
+
+    IEnumerator SwitchPieces(Piece piece1, Piece piece2, bool animate)
+    {
+        Vector2Int piece1Coord = piece1.boardCoordinate;
+        piece1.boardCoordinate = piece2.boardCoordinate;
+        piece2.boardCoordinate = piece1Coord;
+
+        float duration = animate ? 0 : pieceMovementDuration;
+        animationHelper.MoveTo(piece1.gameObject, Util.BoardToLocalPosition(piece1.boardCoordinate, pieceSize), duration);
+        animationHelper.MoveTo(piece2.gameObject, Util.BoardToLocalPosition(piece2.boardCoordinate, pieceSize), duration);
+
+        yield return new WaitForSeconds(duration);
+    }
+
+    List<Vector2Int> ListMatches(Piece piece)
+    {
+        int x = piece.boardCoordinate.x;
+        int y = piece.boardCoordinate.y;
+
+        int up = CheckSideValue(x, y, piece.value, Direction.Up);
+        int down = CheckSideValue(x, y, piece.value, Direction.Down);
+        int left = CheckSideValue(x, y, piece.value, Direction.Left);
+        int right = CheckSideValue(x, y, piece.value, Direction.Right);
+
+        int totalVertical = up + down;
+        int totalHorizontal = left + right;
+
+        List<Vector2Int> lstMatches = new List<Vector2Int>();
+
+        if (totalVertical < 2 && totalHorizontal < 2)
+            return lstMatches;
+
+        if (totalVertical >= totalHorizontal)
+        {
+            for (int i = 0; i < up; i++)
+            {
+                lstMatches.Add(new Vector2Int(x, --y));
+            }
+
+            y = piece.boardCoordinate.y;
+            lstMatches.Add(new Vector2Int(x, y));
+
+            for (int i = 0; i < down; i++)
+            {
+                lstMatches.Add(new Vector2Int(x, ++y));
+            }
+        }
+        else
+        {
+            for (int i = 0; i < left; i++)
+            {
+                lstMatches.Add(new Vector2Int(--x, y));
+            }
+
+            x = piece.boardCoordinate.x;
+            lstMatches.Add(new Vector2Int(x, y));
+
+            for (int i = 0; i < right; i++)
+            {
+                lstMatches.Add(new Vector2Int(++x, y));
+            }
+        }
+
+        return lstMatches;
     }
 
     public void LockBoard()

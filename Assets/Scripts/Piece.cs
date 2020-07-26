@@ -18,13 +18,11 @@ public class Piece : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
 
     Transform dragStartParent;
     Vector3 dragStartPos;
-    Vector3 dragPosOffset;
     bool dragSuccess = false;
 
     void Start()
     {
         canvasGroup = GetComponent<CanvasGroup>();
-        dragPosOffset = new Vector3(rectTransform.rect.width * -0.5f, rectTransform.rect.height * 0.5f, 0);
     }
 
     public void Set(int value, Color color, Vector2Int boardCoordinate, Vector2 localPos)
@@ -81,7 +79,7 @@ public class Piece : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
 
     public void OnDrag(PointerEventData eventData)
     {
-        transform.position = Input.mousePosition + dragPosOffset;
+        transform.position = Input.mousePosition;
     }
 
     public void OnEndDrag(PointerEventData eventData)
@@ -92,6 +90,7 @@ public class Piece : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
         if (!dragSuccess)
         {
             ResetPosition();
+            PieceManager.Instance.DeselectPiece();
         }
     }
 

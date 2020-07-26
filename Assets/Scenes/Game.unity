@@ -2921,6 +2921,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   pieceMovementDuration: 0.25
   animationHelper: {fileID: 800261679}
+  canvasScaler: {fileID: 1755977503}
   grid: {fileID: 219720639}
   canvasGroup: {fileID: 1074369546}
   piecePrefab: {fileID: 2000151867373160155, guid: 16119c6874e77b24e9f36822f5bb9b80,
