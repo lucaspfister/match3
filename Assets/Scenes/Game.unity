@@ -2300,7 +2300,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   pieceScore: 10
-  moves: 2
+  moves: 50
   txtMoves: {fileID: 1108168642}
   txtScore: {fileID: 262497913}
   txtBestScore: {fileID: 1462400732}
