@@ -5,19 +5,21 @@ using UnityEngine;
 public class AnimationHelper : MonoBehaviour
 {
     [SerializeField] float shrinkDuration = 0.2f;
+    [SerializeField] float moveDuration = 0.25f;
 
-    public float GetShrinkDuration => shrinkDuration;
+    public float ShrinkDuration => shrinkDuration + 0.1f;
+    public float MoveDuration => moveDuration + 0.1f;
 
-    public void MoveTo(GameObject piece, Vector2 position, float duration)
+    public void MoveTo(GameObject piece, Vector2 position, bool animate = true)
     {
-        StartCoroutine(MoveToCoroutine(piece, position, duration));
+        StartCoroutine(MoveToCoroutine(piece, position, animate));
     }
 
-    IEnumerator MoveToCoroutine(GameObject obj, Vector2 position, float duration)
+    IEnumerator MoveToCoroutine(GameObject obj, Vector2 position, bool animate)
     {
         RectTransform rectTransform = obj.GetComponent<RectTransform>();
 
-        if (duration == 0)
+        if (!animate)
         {
             rectTransform.anchoredPosition = position;
             yield break;
@@ -29,7 +31,7 @@ public class AnimationHelper : MonoBehaviour
         while (t < 1)
         {
             rectTransform.anchoredPosition = Vector2.Lerp(startPos, position, t);
-            t += Time.deltaTime / duration;
+            t += Time.deltaTime / moveDuration;
             yield return null;
         }
 

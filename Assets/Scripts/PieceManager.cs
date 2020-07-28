@@ -7,11 +7,9 @@ public class PieceManager : MonoBehaviour
 {
     public static PieceManager Instance;
 
-    [SerializeField] float pieceMovementDuration = 0.25f;
     [SerializeField] AnimationHelper animationHelper;
     [SerializeField] CanvasScaler canvasScaler;
     [SerializeField] GridLayoutGroup grid;
-    [SerializeField] CanvasGroup canvasGroup;
     [SerializeField] Piece piecePrefab;
     [SerializeField] Transform piecesParent;
     [SerializeField] Color[] pieceColors;
@@ -34,8 +32,8 @@ public class PieceManager : MonoBehaviour
     {
         Instance = this;
 
-        board = new Piece[8, 8];
         boardLength = grid.constraintCount;
+        board = new Piece[boardLength, boardLength];
         pieceSize = grid.cellSize.x;
     }
 
@@ -48,8 +46,12 @@ public class PieceManager : MonoBehaviour
         {
             for (int y = 0; y < boardLength; y++)
             {
+                if (board[x, y] == null)
+                {
+                    board[x, y] = Instantiate(piecePrefab, piecesParent);
+                }
+
                 pos = Util.BoardToLocalPosition(x, y, pieceSize);
-                board[x, y] = Instantiate(piecePrefab, piecesParent);
                 value = RandomValidValue(x, y);
                 board[x, y].Set(value, pieceColors[value], new Vector2Int(x, y), pos);
             }
@@ -69,18 +71,18 @@ public class PieceManager : MonoBehaviour
         return value;
     }
 
-    int CheckSideValue(int x, int y, int value, Direction direction, int total = 0)
+    int CheckSideValue(int x, int y, int value, Direction direction, List<Piece> lstIgnore = null, int total = 0)
     {
+        lstIgnore = lstIgnore ?? new List<Piece>();
         bool isMatch = false;
 
         switch (direction)
         {
             case Direction.Up:
                 {
-                    if (y > 0 && board[x, y - 1]?.value == value)
+                    if (y > 0 && board[x, y - 1]?.value == value && !lstIgnore.Contains(board[x, y - 1]))
                     {
                         isMatch = true;
-                        total++;
                         y -= 1;
                     }
                     break;
@@ -90,7 +92,6 @@ public class PieceManager : MonoBehaviour
                     if (y < boardLength - 1 && board[x, y + 1]?.value == value)
                     {
                         isMatch = true;
-                        total++;
                         y += 1;
                     }
                     break;
@@ -100,7 +101,6 @@ public class PieceManager : MonoBehaviour
                     if (x > 0 && board[x - 1, y]?.value == value)
                     {
                         isMatch = true;
-                        total++;
                         x -= 1;
                     }
                     break;
@@ -110,16 +110,16 @@ public class PieceManager : MonoBehaviour
                     if (x < boardLength - 1 && board[x + 1, y]?.value == value)
                     {
                         isMatch = true;
-                        total++;
                         x += 1;
                     }
                     break;
                 }
         }
 
-        if (isMatch)
+        if (isMatch && !lstIgnore.Contains(board[x, y]))
         {
-            return CheckSideValue(x, y, value, direction, total);
+            total++;
+            return CheckSideValue(x, y, value, direction, lstIgnore, total);
         }
 
         return total;
@@ -170,12 +170,12 @@ public class PieceManager : MonoBehaviour
             return;
         }
 
-        //Valid movement
         if (isDrag)
         {
             selectedPiece.DragSuccess();
         }
 
+        //Check selected pieces for matches
         StartCoroutine(CheckSelectedPieces(selectedPiece, piece, isDrag));
     }
 
@@ -186,7 +186,7 @@ public class PieceManager : MonoBehaviour
 
     IEnumerator CheckSelectedPieces(Piece piece1, Piece piece2, bool isDrag)
     {
-        LockBoard();
+        GameController.Instance.LockBoard();
         DeselectPiece();
         piece1.Deselect();
         piece2.Deselect();
@@ -199,56 +199,105 @@ public class PieceManager : MonoBehaviour
         }
         else
         {
-            List<Vector2Int> lstMatches1 = ListMatches(piece1);
-            List<Vector2Int> lstMatches2 = ListMatches(piece2);
+            List<Piece> lstPendingPieces = new List<Piece>();
+            lstPendingPieces.Add(piece1);
+            lstPendingPieces.Add(piece2);
+            bool isUsefulMove = false;
 
-            if (lstMatches1.Count == 0 && lstMatches2.Count == 0)
+            while (lstPendingPieces.Count > 0)
             {
-                yield return StartCoroutine(SwitchPieces(piece1, piece2, isDrag));
-            }
-            else
-            {
-                //TODO
-                foreach (var item in lstMatches1)
+                List<Piece> lstMatches = new List<Piece>();
+
+                foreach (Piece item in lstPendingPieces)
                 {
-                    animationHelper.Shrink(board[item.x, item.y].gameObject);
+                    lstMatches.AddRange(ListMatches(item, lstMatches));
                 }
+
+                //No matches
+                if (lstMatches.Count == 0)
+                {
+                    if (!isUsefulMove)
+                    {
+                        yield return StartCoroutine(SwitchPieces(piece1, piece2, isDrag));
+                    }
+
+                    break;
+                }
+
+                isUsefulMove = true;
+
+                Queue<Piece> availablePieces = new Queue<Piece>();
+                List<int> lstModifiedColumns = new List<int>();
+
+                //Shrink matches
+                foreach (Piece item in lstMatches)
+                {
+                    animationHelper.Shrink(item.gameObject);
+                    availablePieces.Enqueue(item);
+                    board[item.boardCoordinate.x, item.boardCoordinate.y] = null;
+
+                    if (!lstModifiedColumns.Contains(item.boardCoordinate.x))
+                    {
+                        lstModifiedColumns.Add(item.boardCoordinate.x);
+                    }
+                }
+
+                yield return new WaitForSeconds(animationHelper.ShrinkDuration);
+
+                GameController.Instance.UpdateScore(lstMatches.Count);
+                //Fill empty slots and receive pending pieces
+                lstPendingPieces = FillEmptySlots(lstModifiedColumns, availablePieces);
+
+                if (lstPendingPieces.Count > 0)
+                {
+                    yield return new WaitForSeconds(animationHelper.MoveDuration);
+                }
+            }
+
+            if (isUsefulMove)
+            {
+                GameController.Instance.MoveUsed();
             }
         }
 
-        //GameController.Instance.MoveUsed();
-        //canvasGroup.interactable = GameController.Instance.hasMovesLeft;
-
-        UnlockBoard();
+        GameController.Instance.UnlockBoard();
     }
 
-    IEnumerator SwitchPieces(Piece piece1, Piece piece2, bool animate)
+    IEnumerator SwitchPieces(Piece piece1, Piece piece2, bool isDrag)
     {
         Vector2Int piece1Coord = piece1.boardCoordinate;
         piece1.boardCoordinate = piece2.boardCoordinate;
         piece2.boardCoordinate = piece1Coord;
+        board[piece1.boardCoordinate.x, piece1.boardCoordinate.y] = piece1;
+        board[piece2.boardCoordinate.x, piece2.boardCoordinate.y] = piece2;
 
-        float duration = animate ? 0 : pieceMovementDuration;
-        animationHelper.MoveTo(piece1.gameObject, Util.BoardToLocalPosition(piece1.boardCoordinate, pieceSize), duration);
-        animationHelper.MoveTo(piece2.gameObject, Util.BoardToLocalPosition(piece2.boardCoordinate, pieceSize), duration);
+        animationHelper.MoveTo(piece1.gameObject, Util.BoardToLocalPosition(piece1.boardCoordinate, pieceSize), !isDrag);
+        animationHelper.MoveTo(piece2.gameObject, Util.BoardToLocalPosition(piece2.boardCoordinate, pieceSize), !isDrag);
 
-        yield return new WaitForSeconds(duration);
+        if (!isDrag)
+        {
+            yield return new WaitForSeconds(animationHelper.MoveDuration);
+        }
     }
 
-    List<Vector2Int> ListMatches(Piece piece)
+    List<Piece> ListMatches(Piece piece, List<Piece> lstIgnore)
     {
+        List<Piece> lstMatches = new List<Piece>();
+
+        if (lstIgnore.Contains(piece))
+            return lstMatches;
+
         int x = piece.boardCoordinate.x;
         int y = piece.boardCoordinate.y;
 
-        int up = CheckSideValue(x, y, piece.value, Direction.Up);
-        int down = CheckSideValue(x, y, piece.value, Direction.Down);
-        int left = CheckSideValue(x, y, piece.value, Direction.Left);
-        int right = CheckSideValue(x, y, piece.value, Direction.Right);
+        int up = CheckSideValue(x, y, piece.value, Direction.Up, lstIgnore);
+        int down = CheckSideValue(x, y, piece.value, Direction.Down, lstIgnore);
+        int left = CheckSideValue(x, y, piece.value, Direction.Left, lstIgnore);
+        int right = CheckSideValue(x, y, piece.value, Direction.Right, lstIgnore);
 
         int totalVertical = up + down;
         int totalHorizontal = left + right;
 
-        List<Vector2Int> lstMatches = new List<Vector2Int>();
 
         if (totalVertical < 2 && totalHorizontal < 2)
             return lstMatches;
@@ -257,43 +306,82 @@ public class PieceManager : MonoBehaviour
         {
             for (int i = 0; i < up; i++)
             {
-                lstMatches.Add(new Vector2Int(x, --y));
+                lstMatches.Add(board[x, --y]);
             }
 
             y = piece.boardCoordinate.y;
-            lstMatches.Add(new Vector2Int(x, y));
+            lstMatches.Add(board[x, y]);
 
             for (int i = 0; i < down; i++)
             {
-                lstMatches.Add(new Vector2Int(x, ++y));
+                lstMatches.Add(board[x, ++y]);
             }
         }
         else
         {
             for (int i = 0; i < left; i++)
             {
-                lstMatches.Add(new Vector2Int(--x, y));
+                lstMatches.Add(board[--x, y]);
             }
 
             x = piece.boardCoordinate.x;
-            lstMatches.Add(new Vector2Int(x, y));
+            lstMatches.Add(board[x, y]);
 
             for (int i = 0; i < right; i++)
             {
-                lstMatches.Add(new Vector2Int(++x, y));
+                lstMatches.Add(board[++x, y]);
             }
         }
 
         return lstMatches;
     }
 
-    public void LockBoard()
+    List<Piece> FillEmptySlots(List<int> lstModifiedColumns, Queue<Piece> availablePieces)
     {
-        canvasGroup.interactable = false;
-    }
+        List<Piece> lstPendingPieces = new List<Piece>();
 
-    public void UnlockBoard()
-    {
-        canvasGroup.interactable = true;
+        foreach (int x in lstModifiedColumns)
+        {
+            int emptySlots = 0;
+
+            for (int y = boardLength - 1; y >= 0; y--)
+            {
+                if (board[x, y] == null)
+                {
+                    emptySlots++;
+                    continue;
+                }
+
+                if (emptySlots > 0)
+                {
+                    Piece piece = board[x, y];
+                    int newY = y + emptySlots;
+                    board[x, newY] = piece;
+                    board[x, y] = null;
+                    piece.boardCoordinate = new Vector2Int(x, newY);
+                    animationHelper.MoveTo(piece.gameObject, Util.BoardToLocalPosition(x, newY, pieceSize));
+                    lstPendingPieces.Add(piece);
+                }
+            }
+
+            int usedPieces = 0;
+
+            while (emptySlots > 0)
+            {
+                Piece piece = availablePieces.Dequeue();
+                int newY = emptySlots - 1;
+                Vector2 pos = Util.BoardToLocalPosition(x, -usedPieces - 1, pieceSize);
+                Vector2 endPos = Util.BoardToLocalPosition(x, newY, pieceSize);
+                int value = Random.Range(0, pieceColors.Length);
+                board[x, newY] = piece;
+                piece.Set(value, pieceColors[value], new Vector2Int(x, newY), pos);
+                animationHelper.MoveTo(piece.gameObject, endPos);
+                lstPendingPieces.Add(piece);
+                emptySlots--;
+                usedPieces++;
+            }
+        }
+
+        return lstPendingPieces;
     }
 }

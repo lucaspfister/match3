@@ -25,12 +25,12 @@ public class Piece : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
         canvasGroup = GetComponent<CanvasGroup>();
     }
 
-    public void Set(int value, Color color, Vector2Int boardCoordinate, Vector2 localPos)
+    public void Set(int value, Color color, Vector2Int boardCoordinate, Vector2 position)
     {
         this.value = value;
         icon.color = color;
         this.boardCoordinate = boardCoordinate;
-        transform.localPosition = localPos;
+        rectTransform.anchoredPosition = position;
         transform.localScale = Vector3.one;
     }
 
@@ -49,7 +49,7 @@ public class Piece : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
 
     void ResetPosition()
     {
-        transform.parent = dragStartParent;
+        transform.SetParent(dragStartParent);
         transform.position = dragStartPos;
     }
 
